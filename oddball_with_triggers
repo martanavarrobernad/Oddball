@@ -1,0 +1,263 @@
+# Somatosensory oddball (left/right) – LAB VERSION
+# - One run per execution
+# - REAL parallel port triggers
+# - Automatic naming: sub-XXX_task_run-YY.csv
+# - Prints every trial for monitoring
+
+import random
+import os
+import pandas as pd
+from psychopy import core, parallel
+
+# =======================================
+# Parallel port configuration
+# =======================================
+PARALLEL_ADDRESS = ·#usually 0x0378  # <-- change if your lab PC uses a different address
+PULSE_DURATION = #whats the lowest we can make this? 0.002    # TTL pulse width in seconds (2 ms)
+
+# Try to create the port
+port = parallel.ParallelPort(address=PARALLEL_ADDRESS)
+
+def send_trigger(code: int):
+    """
+    Send a TTL trigger through the parallel port.
+    code: integer 0–255
+    """
+    port.setData(code)
+    core.wait(PULSE_DURATION)
+    port.setData(0)
+
+
+# =======================================
+# Directory + subject/run logic
+# =======================================
+BASE_DIR = "stimulation_code"
+RUNS_DIR = os.path.join(BASE_DIR, "runs")
+os.makedirs(RUNS_DIR, exist_ok=True)
+
+def get_next_subject_and_run(runs_dir):
+    """
+    Look for files:
+      sub-XXX_task_run-YY.csv
+
+    Rules:
+      - If no files: sub-001, run 1
+      - Else: find max subject; if that subject has < 4 runs → same subject, run+1
+              if that subject already has 4 runs → next subject, run 1
+    """
+    files = os.listdir(runs_dir)
+    run_files = [
+        f for f in files
+        if f.startswith("sub-") and "_task_run-" in f and f.endswith(".csv")
+    ]
+
+    if not run_files:
+        return "001", 1
+
+    subject_runs = {}
+    for fname in run_files:
+        try:
+            after_sub = fname.replace("sub-", "")
+            subj_str, rest = after_sub.split("_task_run-")
+            run_str = rest.replace(".csv", "")
+            subj = int(subj_str)
+            run = int(run_str)
+            subject_runs.setdefault(subj, []).append(run)
+        except Exception:
+            continue
+
+    if not subject_runs:
+        return "001", 1
+
+    max_subj = max(subject_runs.keys())
+    max_run_for_max_subj = max(subject_runs[max_subj])
+
+    if max_run_for_max_subj >= 4:
+        next_subj = max_subj + 1
+        next_run = 1
+    else:
+        next_subj = max_subj
+        next_run = max_run_for_max_subj + 1
+
+    return f"{next_subj:03d}", next_run
+
+def get_run_filename(sub, run):
+    """Build filename: sub-XXX_task_run-YY.csv"""
+    return f"sub-{sub}_task_run-{run:02d}.csv"
+
+
+PARTICIPANT_ID, RUN_NUMBER = get_next_subject_and_run(RUNS_DIR)
+SESSION = 1  # fixed for now
+
+
+# =======================================
+# Experiment parameters
+# =======================================
+TRIALS_PER_RUN = 500   # full run; use smaller (e.g. 20) for quick tests
+
+MIN_RUN = 6
+MAX_RUN = 8
+
+# ISI = 763 ms ± 50 ms → 713–813 ms
+ISI_MIN = 0.713
+ISI_MAX = 0.813
+
+
+# =======================================
+# Helper functions
+# =======================================
+def generate_itis(n, a, b):
+    return [random.uniform(a, b) for _ in range(n)]
+
+def generate_sides_for_run(n, min_run, max_run):
+    """
+    Generate left/right sequence in runs of [min_run, max_run],
+    alternating side between runs.
+    """
+    sides = []
+    side = random.choice(["right", "left"])
+    while len(sides) < n:
+        length = random.randint(min_run, max_run)
+        for _ in range(length):
+            if len(sides) >= n:
+                break
+            sides.append(side)
+        side = "left" if side == "right" else "right"
+    return sides
+
+def encode_trigger(beat, side, kind):
+    """
+    Encoding:
+      - bits 1–3: beat (1–8) mapped to 0–7
+      - bit 0:    side  (0 = right, 1 = left)
+      - bit 4:    kind  (0 = standard, 1 = deviant)
+    """
+    if not (1 <= beat <= 8):
+        raise ValueError("beat should be between 1 and 8")
+
+    if side == "right":
+        side_bit = 0
+    elif side == "left":
+        side_bit = 1
+    else:
+        raise ValueError("side should be 'right' or 'left'")
+
+    if kind == "standard":
+        kind_bit = 0
+    elif kind == "deviant":
+        kind_bit = 1
+    else:
+        raise ValueError("kind should be 'standard' or 'deviant'")
+    kind_bit <<= 4
+
+    beat_bits = (beat - 1) << 1
+
+    trigger = kind_bit | beat_bits | side_bit
+    return trigger
+
+def process_run(sides):
+    beats, kinds, triggers = [], [], []
+    prev = None
+    beat = 0
+    for trial_index, s in enumerate(sides):
+        # beat within same-side run
+        if prev is None or s != prev:
+            beat = 1
+        else:
+            beat += 1
+
+        if trial_index == 0:
+            kind = "standard"
+        else:
+            kind = "standard" if s == prev else "deviant"
+
+        trig = encode_trigger(beat, s, kind)
+
+        beats.append(beat)
+        kinds.append(kind)
+        triggers.append(trig)
+        prev = s
+
+    return beats, kinds, triggers
+
+
+# =======================================
+# Build this run
+# =======================================
+sides = generate_sides_for_run(TRIALS_PER_RUN, MIN_RUN, MAX_RUN)
+itis = generate_itis(TRIALS_PER_RUN, ISI_MIN, ISI_MAX)
+beats, kinds, triggers = process_run(sides)
+
+all_trials = []
+exp_clock = core.Clock()
+
+print()
+print("======================================================")
+print("   Somatosensory oddball – LAB RUN (parallel port)    ")
+print("======================================================")
+print(f" Subject: {PARTICIPANT_ID}")
+print(f" Run:     {RUN_NUMBER:02d}")
+print(f" Trials:  {TRIALS_PER_RUN}")
+print(f" Parallel address: {hex(PARALLEL_ADDRESS)}")
+print()
+
+exp_clock.reset()
+
+
+# =======================================
+# MAIN LOOP – send real triggers
+# =======================================
+for i in range(TRIALS_PER_RUN):
+
+    iti_s = itis[i]
+    trigger_code = triggers[i]
+
+    # Wait ITI
+    core.wait(iti_s)
+
+    # Timestamp before trigger
+    onset_ms = int(exp_clock.getTime() * 1000)
+
+    # REAL trigger
+    send_trigger(trigger_code)
+
+    # Save row in memory
+    trial_row = {
+        "participant_id": PARTICIPANT_ID,
+        "session": SESSION,
+        "run": RUN_NUMBER,
+        "trial_in_run": i + 1,
+        "side": sides[i],
+        "beat": beats[i],
+        "kind": kinds[i],
+        "trigger": trigger_code,
+        "trigger_bin": format(trigger_code, "05b"),
+        "ITI_ms": int(iti_s * 1000),
+        "onset_ms": onset_ms,
+    }
+    all_trials.append(trial_row)
+
+    # Print info per trial (you can comment this line for cleaner timing)
+    print(
+        f"Trial {i+1:4d}/{TRIALS_PER_RUN} | "
+        f"side={sides[i]:5s} | kind={kinds[i]:8s} | "
+        f"beat={beats[i]:2d} | trig={trigger_code:3d} | "
+        f"ITI={int(iti_s*1000):3d} ms | onset={onset_ms} ms",
+        flush=True
+    )
+
+print()
+print(f"✓ Completed ALL {TRIALS_PER_RUN} trials for run {RUN_NUMBER:02d}.")
+print("Saving CSV...")
+
+
+# =======================================
+# Save CSV
+# =======================================
+df = pd.DataFrame(all_trials)
+filepath = os.path.join(RUNS_DIR, get_run_filename(PARTICIPANT_ID, RUN_NUMBER))
+df.to_csv(filepath, index=False)
+
+print(f"CSV saved as: {filepath}")
+print(f"✓ Run {RUN_NUMBER:02d} for subject {PARTICIPANT_ID} FINISHED COMPLETELY.")
+print("======================================================")
