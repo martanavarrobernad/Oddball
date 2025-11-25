@@ -223,7 +223,7 @@ for trial_index in range(TRIALS_PER_RUN):
         "beat": beats[trial_index],
         "kind": kinds[trial_index],
         "trigger": triggers[trial_index],
-        "trigger_bin": format(triggers[trial_index], "05b"),
+        "trigger_bin": "'" + format(triggers[trial_index], "05b"),
         "ITI_ms": iti_ms,
         "onset_ms": None,
     }
@@ -279,3 +279,4 @@ df.to_csv(filepath, index=False)
 
 print("CSV saved as:", filepath)
 print("HEADLESS TEST MODE finished (no real triggers were sent).")
+
