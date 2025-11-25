@@ -231,7 +231,7 @@ for i in range(TRIALS_PER_RUN):
         "beat": beats[i],
         "kind": kinds[i],
         "trigger": trigger_code,
-        "trigger_bin": format(trigger_code, "05b"),
+        "trigger_bin": "'" + format(triggers[trial_index], "05b"),
         "ITI_ms": int(iti_s * 1000),
         "onset_ms": onset_ms,
     }
