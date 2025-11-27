@@ -7,7 +7,7 @@
 #       sub-001_task_run-01.csv
 #       sub-001_task_run-02.csv
 #       ...
-#       sub-001_task_run-04.csv
+#       sub-001_task_run-08.csv
 #       sub-002_task_run-01.csv
 #       etc.
 # - Prints info for EVERY stimulus (trial)
@@ -47,8 +47,8 @@ def get_next_subject_and_run(runs_dir: str):
 
     Rules:
       - If no files: sub-001, run 1
-      - Else: find max subject; if that subject has < 4 runs → same subject, run+1
-              if that subject already has 4 runs → next subject, run 1
+      - Else: find max subject; if that subject has < 8 runs → same subject, run+1
+              if that subject already has 8 runs → next subject, run 1
     """
     files = os.listdir(runs_dir)
     run_files = [f for f in files
@@ -78,8 +78,9 @@ def get_next_subject_and_run(runs_dir: str):
     max_subj = max(subject_runs.keys())
     max_run_for_max_subj = max(subject_runs[max_subj])
 
-    if max_run_for_max_subj >= 4:
-        # Last subject already has 4 runs → new subject
+    # ---- CAMBIO: ahora 8 runs por sujeto ----
+    if max_run_for_max_subj >= 8:
+        # Last subject already has 8 runs → new subject
         next_subj = max_subj + 1
         next_run = 1
     else:
@@ -102,23 +103,27 @@ SESSION = 1  # fixed for now
 
 
 # =======================================
-# Experiment parameters (ONE RUN per execution), 
+# Experiment parameters (ONE RUN per execution)
 # =======================================
 
-#we are going to do 8 runs
 TRIALS_PER_RUN = 500      # 500 trials per run in the real experiment
 
-#total=4000 trials 
+# ---- CAMBIO: nuevas longitudes de runs ----
+MIN_RUN = 3               # min same-side run length
+MAX_RUN = 7               # max same-side run length
 
-MIN_RUN = 3            # min same-side run length
-MAX_RUN = 7            # max same-side run length
+# ---- CAMBIO: ISI fijo de 700 ms, sin jitter ----
+ISI_FIXED = 0.700         # seconds (700 ms)
 
-#no ISI, fixated 700ms
+
 # =======================================
 # Helper functions
 # =======================================
-def generate_itis(n_trials: int, iti_min: float, iti_max: float):
-    return [random.uniform(iti_min, iti_max) for _ in range(n_trials)]
+def generate_itis_fixed(n_trials: int, iti_s: float):
+    """
+    Genera una lista de ITIs constantes (sin jitter).
+    """
+    return [iti_s for _ in range(n_trials)]
 
 def generate_sides_for_run(trials_per_run: int, min_run: int, max_run: int):
     """
@@ -205,7 +210,7 @@ all_trials = []
 exp_clock = core.Clock()
 
 sides = generate_sides_for_run(TRIALS_PER_RUN, MIN_RUN, MAX_RUN)
-itis = generate_itis(TRIALS_PER_RUN, ISI_MIN, ISI_MAX)
+itis = generate_itis_fixed(TRIALS_PER_RUN, ISI_FIXED)
 beats, kinds, triggers = process_run(sides)
 
 for trial_index in range(TRIALS_PER_RUN):
@@ -277,4 +282,3 @@ df.to_csv(filepath, index=False)
 
 print("CSV saved as:", filepath)
 print("HEADLESS TEST MODE finished (no real triggers were sent).")
-
