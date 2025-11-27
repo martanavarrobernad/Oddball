@@ -104,8 +104,6 @@ SESSION = 1  # fixed for now
 # =======================================
 # Experiment parameters (ONE RUN per execution)
 # =======================================
-
-# For quick testing, set e.g. TRIALS_PER_RUN = 20.
 TRIALS_PER_RUN = 500      # 500 trials per run in the real experiment
 
 MIN_RUN = 6               # min same-side run length
