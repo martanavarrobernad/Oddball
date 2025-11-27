@@ -102,18 +102,18 @@ SESSION = 1  # fixed for now
 
 
 # =======================================
-# Experiment parameters (ONE RUN per execution)
+# Experiment parameters (ONE RUN per execution), 
 # =======================================
+
+#we are going to do 8 runs
 TRIALS_PER_RUN = 500      # 500 trials per run in the real experiment
 
-MIN_RUN = 6               # min same-side run length
-MAX_RUN = 8               # max same-side run length
+#total=4000 trials 
 
-# ISI = 763 ms ± 50 ms → 713–813 ms
-ISI_MIN = 0.713           # seconds
-ISI_MAX = 0.813           # seconds
+MIN_RUN = 3            # min same-side run length
+MAX_RUN = 7            # max same-side run length
 
-
+#no ISI, fixated 700ms
 # =======================================
 # Helper functions
 # =======================================
