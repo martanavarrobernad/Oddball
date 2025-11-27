@@ -12,8 +12,8 @@ from psychopy import core, parallel
 # =======================================
 # Parallel port configuration
 # =======================================
-PARALLEL_ADDRESS = 0x0378           # <-- cámbialo si tu PC usa otro puerto
-PULSE_DURATION = 0.002              # 2 ms (mínimo estable en muchos sistemas)
+PARALLEL_ADDRESS = 0x0378           # <-- change for the right port
+PULSE_DURATION = 0.00               # 0.2 ms (mínimo estable en muchos sistemas)
 
 port = parallel.ParallelPort(address=PARALLEL_ADDRESS)
 
