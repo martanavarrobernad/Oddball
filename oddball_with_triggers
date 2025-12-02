@@ -1,12 +1,8 @@
 # Somatosensory oddball (left/right) – PARALLEL PORT VERSION
-# - No PsychoPy window
-# - No keyboard
 # - One run per execution
 # - Parallel port triggers:
 #       * Full trigger code to EEG
 #       * Separate pulses to RIGHT and LEFT stimulators based on side bit
-# - Automatic naming:
-#       sub-001_task_run-01.csv, ..., sub-001_task_run-08.csv, sub-002_task_run-01.csv, ...
 
 import random
 import os
@@ -26,7 +22,6 @@ LEFT_PORT_ADDRESS  = 0x03BC   # TODO: set real LEFT stim port address
 port_eeg   = parallel.ParallelPort(address=EEG_PORT_ADDRESS)
 port_right = parallel.ParallelPort(address=RIGHT_PORT_ADDRESS)
 port_left  = parallel.ParallelPort(address=LEFT_PORT_ADDRESS)
-
 
 # =======================================
 # Trigger sending
@@ -61,7 +56,6 @@ def send_trigger(trigger_code: int) -> None:
         port_left.setData(1)
         core.wait(0.002)
         port_left.setData(0)
-
 
 # =======================================
 # Directories and run/subject handling
