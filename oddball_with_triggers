@@ -1,42 +1,104 @@
-# Somatosensory oddball (left/right) – LAB VERSION
+# Somatosensory oddball (left/right) – HEADLESS TEST MODE
+# - No PsychoPy window
+# - No keyboard
 # - One run per execution
-# - REAL parallel port triggers
-# - Automatic naming: sub-XXX_task_run-YY.csv
-# - Prints every trial for monitoring
+# - NO parallel port (no real triggers in this test version)
+# - Automatic naming:
+#       sub-001_task_run-01.csv
+#       sub-001_task_run-02.csv
+#       ...
+#       sub-001_task_run-08.csv
+#       sub-002_task_run-01.csv
+#       etc.
+# - Prints info for EVERY stimulus (trial)
 
 import random
 import os
 import pandas as pd
-from psychopy import core, parallel
+from psychopy import core  # only timing, no visual, no event
+# from psychopy import parallel  # uncomment and configure when using real hardware
+
 
 # =======================================
-# Parallel port configuration
+# Trigger sending (EEG + dual stimulators)
 # =======================================
-PARALLEL_ADDRESS = 0x0378           # <-- change for the right port
-PULSE_DURATION = 0.0002             # 0.2 ms (mínimo estable en muchos sistemas)
-
-port = parallel.ParallelPort(address=PARALLEL_ADDRESS)
-
-def send_trigger(code: int):
+def send_trigger(trigger_code: int) -> None:
     """
-    Send a TTL trigger through the parallel port.
+    Sends:
+      1) The full 5-bit trigger code to the EEG system
+      2) A stimulation pulse to the correct stimulator (right or left)
+         depending ONLY on bit 0 of the trigger code:
+             bit0 = 0 → RIGHT stimulator
+             bit0 = 1 → LEFT stimulator
+
+    NOTE:
+      - This function is currently in TEST MODE (no real triggers).
+      - Replace the 'pass' statements and uncomment hardware lines
+        when you connect the real devices.
     """
-    port.setData(code)
-    core.wait(PULSE_DURATION)
-    port.setData(0)
+
+    # ---------------------------------------
+    # Decode side from trigger bit 0
+    # ---------------------------------------
+    # bit 0 (LSB) is side:
+    #   0 = right
+    #   1 = left
+    side_bit = trigger_code & 0b1
+
+    # ---------------------------------------
+    # 1) Send full trigger code to EEG system
+    #    (Replace with your actual hardware calls)
+    # ---------------------------------------
+    # Example using a parallel port for EEG:
+    # port_eeg = parallel.ParallelPort(address=0x0378)
+    # port_eeg.setData(trigger_code)
+    # core.wait(0.002)  # 2 ms pulse
+    # port_eeg.setData(0)
+
+    # ---------------------------------------
+    # 2) Send stimulation pulse
+    #    to the RIGHT or LEFT stimulator
+    #    according to side_bit
+    # ---------------------------------------
+    if side_bit == 0:
+        # ---- RIGHT stimulator ----
+        # Example:
+        # port_right = parallel.ParallelPort(address=0x0278)
+        # port_right.setData(1)
+        # core.wait(0.002)
+        # port_right.setData(0)
+        pass
+    else:
+        # ---- LEFT stimulator ----
+        # Example:
+        # port_left = parallel.ParallelPort(address=0x03BC)
+        # port_left.setData(1)
+        # core.wait(0.002)
+        # port_left.setData(0)
+        pass
 
 
 # =======================================
-# Directory + subject/run logic
+# Directories and run/subject handling
 # =======================================
 BASE_DIR = "stimulation_code"
 RUNS_DIR = os.path.join(BASE_DIR, "runs")
 os.makedirs(RUNS_DIR, exist_ok=True)
 
-def get_next_subject_and_run(runs_dir):
+
+def get_next_subject_and_run(runs_dir: str):
     """
-    Automatic selection of next subject and run.
-    Now uses 8 runs per subject.
+    Look into runs_dir for files named:
+      sub-XXX_task_run-YY.csv
+
+    Decide:
+      - next subject ID (XXX)
+      - next run number (YY) for that subject
+
+    Rules:
+      - If no files: sub-001, run 1
+      - Else: find max subject; if that subject has < 8 runs → same subject, run+1
+              if that subject already has 8 runs → next subject, run 1
     """
     files = os.listdir(runs_dir)
     run_files = [
@@ -47,17 +109,20 @@ def get_next_subject_and_run(runs_dir):
     if not run_files:
         return "001", 1
 
-    subject_runs = {}
+    subject_runs = {}  # subj_int -> list of run_int
     for fname in run_files:
+        # Pattern: sub-XXX_task_run-YY.csv
         try:
             after_sub = fname.replace("sub-", "")
             subj_str, rest = after_sub.split("_task_run-")
             run_str = rest.replace(".csv", "")
             subj = int(subj_str)
             run = int(run_str)
-            subject_runs.setdefault(subj, []).append(run)
-        except:
+        except Exception:
+            # Ignore any file that doesn't match the pattern
             continue
+
+        subject_runs.setdefault(subj, []).append(run)
 
     if not subject_runs:
         return "001", 1
@@ -65,172 +130,246 @@ def get_next_subject_and_run(runs_dir):
     max_subj = max(subject_runs.keys())
     max_run_for_max_subj = max(subject_runs[max_subj])
 
-    # -------- CAMBIO: ahora 8 runs por sujeto --------
+    # 8 runs per subject
     if max_run_for_max_subj >= 8:
+        # Last subject already has 8 runs → new subject
         next_subj = max_subj + 1
         next_run = 1
     else:
+        # Continue with same subject, next run
         next_subj = max_subj
         next_run = max_run_for_max_subj + 1
 
     return f"{next_subj:03d}", next_run
 
-def get_run_filename(sub, run):
-    return f"sub-{sub}_task_run-{run:02d}.csv"
+
+def get_run_filename(subject_id: str, run_number: int) -> str:
+    """
+    Build filename: sub-XXX_task_run-YY.csv
+    """
+    return f"sub-{subject_id}_task_run-{run_number:02d}.csv"
 
 
+# Get subject ID and run number for THIS execution
 PARTICIPANT_ID, RUN_NUMBER = get_next_subject_and_run(RUNS_DIR)
-SESSION = 1
+SESSION = 1  # fixed for now
 
 
 # =======================================
-# Experiment parameters
+# Experiment parameters (ONE RUN per execution)
 # =======================================
-TRIALS_PER_RUN = 500
 
-# -------- CAMBIOS SOLICITADOS --------
-MIN_RUN = 3
-MAX_RUN = 7
+TRIALS_PER_RUN = 500      # 500 trials per run in the real experiment
 
-ISI_FIXED = 0.700   # 700 ms exactos (sin jitter)
+# Same-side run lengths (number of consecutive trials with the same side)
+MIN_RUN = 3               # minimum same-side run length
+MAX_RUN = 7               # maximum same-side run length
+
+# Fixed ISI of 700 ms, no jitter
+ISI_FIXED = 0.700         # seconds (700 ms)
 
 
 # =======================================
 # Helper functions
 # =======================================
-def generate_itis_fixed(n_trials, iti_s):
-    """ISI constante, sin jitter."""
-    return [iti_s] * n_trials
+def generate_isis_fixed(n_trials: int, isi_s: float):
+    """
+    Generate a list of constant ISIs (no jitter).
+    """
+    return [isi_s for _ in range(n_trials)]
 
-def generate_sides_for_run(n, min_run, max_run):
+
+def generate_sides_for_run(trials_per_run: int, min_run: int, max_run: int):
+    """
+    Generate left/right sequence in runs of [min_run, max_run],
+    alternating side between runs.
+    """
     sides = []
-    side = random.choice(["right", "left"])
-    while len(sides) < n:
-        length = random.randint(min_run, max_run)
-        for _ in range(length):
-            if len(sides) >= n:
+    current_side = random.choice(["right", "left"])
+    while len(sides) < trials_per_run:
+        run_length = random.randint(min_run, max_run)
+        for _ in range(run_length):
+            if len(sides) >= trials_per_run:
                 break
-            sides.append(side)
-        side = "left" if side == "right" else "right"
+            sides.append(current_side)
+        # Alternate side after each run
+        current_side = "left" if current_side == "right" else "right"
     return sides
 
-def encode_trigger(beat, side, kind):
+
+def encode_trigger(beat: int, side: str, kind: str) -> int:
+    """
+    Encode trigger as a 5-bit integer:
+
+    bit 0:    side      (0 = right, 1 = left)
+    bits 1–3: beat-1    (0–7 → beats 1–8)
+    bit 4:    kind      (0 = standard, 1 = deviant)
+    """
+    if not (1 <= beat <= 8):
+        raise ValueError("beat should be between 1 and 8")
+
     if side == "right":
         side_bit = 0
     elif side == "left":
         side_bit = 1
     else:
-        raise ValueError("side must be right or left")
+        raise ValueError("side should be 'right' or 'left'")
 
     if kind == "standard":
         kind_bit = 0
     elif kind == "deviant":
         kind_bit = 1
     else:
-        raise ValueError("kind must be standard or deviant")
+        raise ValueError("kind should be 'standard' or 'deviant'")
 
-    kind_bit <<= 4
+    # Move kind to bit 4
+    kind_bit = kind_bit << 4
+
+    # Beat-1 goes to bits 1–3
     beat_bits = (beat - 1) << 1
 
-    return kind_bit | beat_bits | side_bit
+    trigger = kind_bit | beat_bits | side_bit
+    return trigger
+
 
 def process_run(sides):
-    beats, kinds, triggers = [], [], []
-    prev = None
-    beat = 0
-    for idx, s in enumerate(sides):
-        if prev is None or s != prev:
-            beat = 1
-        else:
-            beat += 1
+    """
+    From a sequence of sides (left/right), compute for each trial:
+      - beat: position within the same-side run (1, 2, 3, ...)
+      - kind: 'standard' or 'deviant'
+      - trigger: encoded 5-bit trigger code
+    """
+    beats = []
+    kinds = []
+    triggers = []
 
-        if idx == 0:
+    previous_side = None
+    current_beat = 0
+
+    for trial_index, current_side in enumerate(sides):
+        # Beat within same-side run
+        if previous_side is None or current_side != previous_side:
+            current_beat = 1
+        else:
+            current_beat += 1
+        beats.append(current_beat)
+
+        # Standard vs deviant
+        if trial_index == 0:
             kind = "standard"
         else:
-            kind = "standard" if s == prev else "deviant"
-
-        trig = encode_trigger(beat, s, kind)
-
-        beats.append(beat)
+            kind = "standard" if current_side == previous_side else "deviant"
         kinds.append(kind)
-        triggers.append(trig)
 
-        prev = s
+        # Trigger value
+        trigger_value = encode_trigger(current_beat, current_side, kind)
+        triggers.append(trigger_value)
+
+        previous_side = current_side
 
     return beats, kinds, triggers
 
 
 # =======================================
-# Build this run
+# Build SINGLE RUN structure for this execution
 # =======================================
+all_trials = []
+
 sides = generate_sides_for_run(TRIALS_PER_RUN, MIN_RUN, MAX_RUN)
-itis = generate_itis_fixed(TRIALS_PER_RUN, ISI_FIXED)
+isis = generate_isis_fixed(TRIALS_PER_RUN, ISI_FIXED)
 beats, kinds, triggers = process_run(sides)
 
-all_trials = []
-exp_clock = core.Clock()
+for trial_index in range(TRIALS_PER_RUN):
+    isi_s = isis[trial_index]
+    isi_ms = int(round(isi_s * 1000))
 
-print()
-print("======================================================")
-print("   Somatosensory oddball – LAB RUN (parallel port)    ")
-print("======================================================")
-print(f" Subject: {PARTICIPANT_ID}")
-print(f" Run:     {RUN_NUMBER:02d}")
-print(f" Trials:  {TRIALS_PER_RUN}")
-print(f" Parallel address: {hex(PARALLEL_ADDRESS)}")
-print()
-
-exp_clock.reset()
-
-
-# =======================================
-# MAIN LOOP – send real triggers
-# =======================================
-for i in range(TRIALS_PER_RUN):
-
-    iti_s = itis[i]
-    trigger_code = triggers[i]
-
-    core.wait(iti_s)
-
-    onset_ms = int(exp_clock.getTime() * 1000)
-
-    send_trigger(trigger_code)
-
-    trial_row = {
+    row = {
         "participant_id": PARTICIPANT_ID,
         "session": SESSION,
-        "run": RUN_NUMBER,
-        "trial_in_run": i + 1,
-        "side": sides[i],
-        "beat": beats[i],
-        "kind": kinds[i],
-        "trigger": trigger_code,
-        "trigger_bin": "'" + format(trigger_code, "05b"),
-        "ITI_ms": int(iti_s * 1000),
-        "onset_ms": onset_ms,
+        "run": RUN_NUMBER,  # run number for this subject
+        "trial_in_run": trial_index + 1,
+        "side": sides[trial_index],
+        "beat": beats[trial_index],
+        "kind": kinds[trial_index],
+        "trigger": triggers[trial_index],
+        "trigger_bin": "'" + format(triggers[trial_index], "05b"),
+        "ISI_ms": isi_ms,
+        "onset_ms": None,
     }
-    all_trials.append(trial_row)
+    all_trials.append(row)
+
+# Compute ideal onset times (in seconds) from the ISIs (absolute timing)
+scheduled_onsets_s = []
+t = 0.0
+for trial in all_trials:
+    isi_s = trial["ISI_ms"] / 1000.0
+    t += isi_s
+    scheduled_onsets_s.append(t)
+
+
+# =======================================
+# Presentation loop for THIS RUN (headless)
+# with absolute timing (better ISI precision)
+# =======================================
+print("HEADLESS TEST MODE: somatosensory oddball (left/right), no real triggers.")
+print(f"Subject (participant_id): {PARTICIPANT_ID}")
+print(f"Run number: {RUN_NUMBER:02d}")
+print(f"Trials in this run: {TRIALS_PER_RUN}")
+print("Running one run now (no window, no keyboard)...\n")
+
+exp_clock = core.Clock()
+exp_clock.reset()
+
+for i, trial in enumerate(all_trials):
+    # Ideal onset time (in seconds from start of run)
+    target_onset_s = scheduled_onsets_s[i]
+
+    # Coarse waiting:
+    # while more than 5 ms remain, sleep in ~1 ms chunks
+    while True:
+        now_s = exp_clock.getTime()
+        remaining_s = target_onset_s - now_s
+        if remaining_s <= 0:
+            break
+        if remaining_s > 0.005:
+            core.wait(0.001)  # sleep ~1 ms
+        else:
+            # Last <= 5 ms: busy-wait loop for maximum precision
+            pass
+
+    # Actual onset time just before sending trigger
+    onset_s = exp_clock.getTime()
+    onset_ms = int(round(onset_s * 1000))
+
+    trigger_code = trial["trigger"]
+    send_trigger(trigger_code)      # decides which stimulator based on bit 0
+    trial["onset_ms"] = onset_ms
 
     print(
         f"Trial {i+1:4d}/{TRIALS_PER_RUN} | "
-        f"side={sides[i]:5s} | kind={kinds[i]:8s} | "
-        f"beat={beats[i]:2d} | trig={trigger_code:3d} | "
-        f"ITI={int(iti_s*1000):3d} ms | onset={onset_ms} ms",
+        f"side={trial['side']:5s} | "
+        f"kind={trial['kind']:8s} | "
+        f"beat={trial['beat']:2d} | "
+        f"trigger={trigger_code:2d} | "
+        f"ISI={trial['ISI_ms']:3d} ms | "
+        f"onset={onset_ms} ms",
         flush=True
     )
 
-print()
-print(f"✓ Completed ALL {TRIALS_PER_RUN} trials for run {RUN_NUMBER:02d}.")
-print("Saving CSV...")
+print(f"\nRun {RUN_NUMBER:02d} for subject {PARTICIPANT_ID} finished.")
 
 
 # =======================================
-# Save CSV
+# Save CSV for THIS RUN
 # =======================================
 df = pd.DataFrame(all_trials)
-filepath = os.path.join(RUNS_DIR, get_run_filename(PARTICIPANT_ID, RUN_NUMBER))
+filename = get_run_filename(PARTICIPANT_ID, RUN_NUMBER)
+filepath = os.path.join(RUNS_DIR, filename)
 df.to_csv(filepath, index=False)
+
+print("CSV saved as:", filepath)
+print("HEADLESS TEST MODE finished (no real triggers were sent).")
+
 
 print(f"CSV saved as: {filepath}")
 print(f"✓ Run {RUN_NUMBER:02d} for subject {PARTICIPANT_ID} FINISHED COMPLETELY.")
