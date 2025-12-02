@@ -36,6 +36,7 @@ BASE_DIR = "stimulation_code"
 RUNS_DIR = os.path.join(BASE_DIR, "runs")
 os.makedirs(RUNS_DIR, exist_ok=True)
 
+
 def get_next_subject_and_run(runs_dir: str):
     """
     Look into runs_dir for files named:
@@ -78,7 +79,7 @@ def get_next_subject_and_run(runs_dir: str):
     max_subj = max(subject_runs.keys())
     max_run_for_max_subj = max(subject_runs[max_subj])
 
-    # ---- CAMBIO: ahora 8 runs por sujeto ----
+    # 8 runs per subject
     if max_run_for_max_subj >= 8:
         # Last subject already has 8 runs → new subject
         next_subj = max_subj + 1
@@ -89,6 +90,7 @@ def get_next_subject_and_run(runs_dir: str):
         next_run = max_run_for_max_subj + 1
 
     return f"{next_subj:03d}", next_run
+
 
 def get_run_filename(subject_id: str, run_number: int) -> str:
     """
@@ -108,22 +110,23 @@ SESSION = 1  # fixed for now
 
 TRIALS_PER_RUN = 500      # 500 trials per run in the real experiment
 
-# ---- CAMBIO: nuevas longitudes de runs ----
+# Longitudes de rachas (runs) mismo lado
 MIN_RUN = 3               # min same-side run length
 MAX_RUN = 7               # max same-side run length
 
-# ---- CAMBIO: ISI fijo de 700 ms, sin jitter ----
+# ISI fijo de 700 ms, sin jitter
 ISI_FIXED = 0.700         # seconds (700 ms)
 
 
 # =======================================
 # Helper functions
 # =======================================
-def generate_itis_fixed(n_trials: int, iti_s: float):
+def generate_isis_fixed(n_trials: int, isi_s: float):
     """
-    Genera una lista de ITIs constantes (sin jitter).
+    Genera una lista de ISIs constantes (sin jitter).
     """
-    return [iti_s for _ in range(n_trials)]
+    return [isi_s for _ in range(n_trials)]
+
 
 def generate_sides_for_run(trials_per_run: int, min_run: int, max_run: int):
     """
@@ -141,12 +144,14 @@ def generate_sides_for_run(trials_per_run: int, min_run: int, max_run: int):
         current_side = "left" if current_side == "right" else "right"
     return sides
 
+
 def encode_trigger(beat: int, side: str, kind: str) -> int:
     """
-    Encoding:
-    - bits 1–3: beat (1–8) mapped to 0–7
-    - bit 0:    side  (0 = right, 1 = left)
-    - bit 4:    kind  (0 = standard, 1 = deviant)
+    Encoding (5 bits total):
+
+    bit 0:   side      (0 = right, 1 = left)
+    bits 1–3: beat-1   (0–7 → beats 1–8)
+    bit 4:   kind      (0 = standard, 1 = deviant)
     """
     if not (1 <= beat <= 8):
         raise ValueError("beat should be between 1 and 8")
@@ -164,14 +169,21 @@ def encode_trigger(beat: int, side: str, kind: str) -> int:
         kind_bit = 1
     else:
         raise ValueError("kind should be 'standard' or 'deviant'")
-    kind_bit = kind_bit << 4
+    kind_bit = kind_bit << 4          # move to bit 4
 
-    beat_bits = (beat - 1) << 1
+    beat_bits = (beat - 1) << 1       # bits 1–3
 
     trigger = kind_bit | beat_bits | side_bit
     return trigger
 
+
 def process_run(sides):
+    """
+    From a sequence of sides (left/right), compute:
+      - beat (position in same-side run)
+      - kind (standard / deviant)
+      - trigger code
+    """
     beats = []
     kinds = []
     triggers = []
@@ -207,15 +219,14 @@ def process_run(sides):
 # Build SINGLE RUN structure for this execution
 # =======================================
 all_trials = []
-exp_clock = core.Clock()
 
 sides = generate_sides_for_run(TRIALS_PER_RUN, MIN_RUN, MAX_RUN)
-itis = generate_itis_fixed(TRIALS_PER_RUN, ISI_FIXED)
+isis = generate_isis_fixed(TRIALS_PER_RUN, ISI_FIXED)
 beats, kinds, triggers = process_run(sides)
 
 for trial_index in range(TRIALS_PER_RUN):
-    iti_s = itis[trial_index]
-    iti_ms = int(round(iti_s * 1000))
+    isi_s = isis[trial_index]
+    isi_ms = int(round(isi_s * 1000))
 
     row = {
         "participant_id": PARTICIPANT_ID,
@@ -227,14 +238,23 @@ for trial_index in range(TRIALS_PER_RUN):
         "kind": kinds[trial_index],
         "trigger": triggers[trial_index],
         "trigger_bin": "'" + format(triggers[trial_index], "05b"),
-        "ITI_ms": iti_ms,
+        "ISI_ms": isi_ms,
         "onset_ms": None,
     }
     all_trials.append(row)
 
+# Calcular onsets ideales (en segundos) a partir de los ISIs
+scheduled_onsets_s = []
+t = 0.0
+for trial in all_trials:
+    isi_s = trial["ISI_ms"] / 1000.0
+    t += isi_s
+    scheduled_onsets_s.append(t)
+
 
 # =======================================
 # Presentation loop for THIS RUN (headless)
+# with absolute timing (better ISI precision)
 # =======================================
 print("HEADLESS TEST MODE: somatosensory oddball (left/right), no real triggers.")
 print(f"Subject (participant_id): {PARTICIPANT_ID}")
@@ -242,29 +262,40 @@ print(f"Run number: {RUN_NUMBER:02d}")
 print(f"Trials in this run: {TRIALS_PER_RUN}")
 print("Running one run now (no window, no keyboard)...\n")
 
+exp_clock = core.Clock()
 exp_clock.reset()
 
-for i, trial in enumerate(all_trials, start=1):
-    iti_s = trial["ITI_ms"] / 1000.0
-    trigger_code = trial["trigger"]
+for i, trial in enumerate(all_trials):
+    # Ideal onset time (in seconds from start of run)
+    target_onset_s = scheduled_onsets_s[i]
 
-    # Wait ITI
-    core.wait(iti_s)
+    # Coarse wait: while more than 5 ms remain, sleep in 1 ms chunks
+    while True:
+        now_s = exp_clock.getTime()
+        remaining_s = target_onset_s - now_s
+        if remaining_s <= 0:
+            break
+        if remaining_s > 0.005:
+            core.wait(0.001)  # sleep ~1 ms
+        else:
+            # Last <= 5 ms: tight loop to refine timing
+            pass
 
-    # Time before (dummy) trigger
+    # Actual onset time just before sending trigger
     onset_s = exp_clock.getTime()
     onset_ms = int(round(onset_s * 1000))
+
+    trigger_code = trial["trigger"]
     send_trigger(trigger_code)
     trial["onset_ms"] = onset_ms
 
-    # Print info for this stimulus
     print(
-        f"Trial {i:4d}/{TRIALS_PER_RUN} | "
+        f"Trial {i+1:4d}/{TRIALS_PER_RUN} | "
         f"side={trial['side']:5s} | "
         f"kind={trial['kind']:8s} | "
         f"beat={trial['beat']:2d} | "
         f"trigger={trigger_code:2d} | "
-        f"ITI={trial['ITI_ms']:3d} ms | "
+        f"ISI={trial['ISI_ms']:3d} ms | "
         f"onset={onset_ms} ms",
         flush=True
     )
@@ -282,3 +313,4 @@ df.to_csv(filepath, index=False)
 
 print("CSV saved as:", filepath)
 print("HEADLESS TEST MODE finished (no real triggers were sent).")
+
