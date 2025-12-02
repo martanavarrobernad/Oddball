@@ -18,9 +18,9 @@ from psychopy import parallel
 # PARALLEL PORT ADDRESSES
 # =======================================
 # TODO: replace these with the REAL addresses of your ports
-EEG_PORT_ADDRESS   = 0x0378   # TODO: set your real EEG port address
-RIGHT_PORT_ADDRESS = 0x0278   # TODO: set your real RIGHT stim port address
-LEFT_PORT_ADDRESS  = 0x03BC   # TODO: set your real LEFT stim port address
+EEG_PORT_ADDRESS   = 0x0378   # TODO: set real EEG port address
+RIGHT_PORT_ADDRESS = 0x0278   # TODO: set real RIGHT stim port address
+LEFT_PORT_ADDRESS  = 0x03BC   # TODO: set real LEFT stim port address
 
 # Create parallel port objects
 port_eeg   = parallel.ParallelPort(address=EEG_PORT_ADDRESS)
