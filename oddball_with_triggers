@@ -14,14 +14,10 @@ from psychopy import parallel
 # PARALLEL PORT ADDRESSES
 # =======================================
 # TODO: replace these with the REAL addresses of your ports
-EEG_PORT_ADDRESS   = 0x0378   # TODO: set real EEG port address
-RIGHT_PORT_ADDRESS = 0x0278   # TODO: set real RIGHT stim port address
-LEFT_PORT_ADDRESS  = 0x03BC   # TODO: set real LEFT stim port address
+EEG_PORT_ADDRESS   = 0x0378
 
 # Create parallel port objects
 port_eeg   = parallel.ParallelPort(address=EEG_PORT_ADDRESS)
-port_right = parallel.ParallelPort(address=RIGHT_PORT_ADDRESS)
-port_left  = parallel.ParallelPort(address=LEFT_PORT_ADDRESS)
 
 # =======================================
 # Trigger sending
@@ -39,23 +35,6 @@ def send_trigger(trigger_code: int) -> None:
 
     # Decode side from bit 0
     side_bit = trigger_code & 0b1   # 0 = right, 1 = left
-
-    # 1) Send full trigger code to EEG
-    port_eeg.setData(trigger_code)
-    core.wait(0.002)      # 2 ms pulse
-    port_eeg.setData(0)
-
-    # 2) Send stimulation pulse to the appropriate stimulator
-    if side_bit == 0:
-        # RIGHT stimulator
-        port_right.setData(1)
-        core.wait(0.002)
-        port_right.setData(0)
-    else:
-        # LEFT stimulator
-        port_left.setData(1)
-        core.wait(0.002)
-        port_left.setData(0)
 
 # =======================================
 # Directories and run/subject handling
