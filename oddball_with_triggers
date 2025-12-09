@@ -1,6 +1,7 @@
 #QUESTIONS:
 #pulse duration?
 #documentation of the device (c-mark, etc...) for ethics
+#pulse parameters: 0.2ms duration, square wave pulse (set in the stimulator) (under or over motor th)?
 
 # Somatosensory oddball (left/right) – PARALLEL PORT VERSION
 # One run per execution
