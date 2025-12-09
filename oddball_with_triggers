@@ -1,3 +1,7 @@
+#QUESTIONS:
+#pulse duration?
+#documentation of the device (c-mark, etc...) for ethics
+
 # Somatosensory oddball (left/right) – PARALLEL PORT VERSION
 # One run per execution
 # Parallel port triggers
@@ -5,18 +9,17 @@
 import random
 import os
 import pandas as pd
+
 from psychopy import core
 from psychopy import parallel
 
-# PARALLEL PORT ADDRESS
-EEG_PORT_ADDRESS   = 0x0378
+#  PARALLEL PORT ADDRESS
+EEG_PORT_ADDRESS = 0x0378
 
-# Create parallel port objects
-port_eeg   = parallel.ParallelPort(address=EEG_PORT_ADDRESS)
+# Create parallel port object
+port_eeg = parallel.ParallelPort(address=EEG_PORT_ADDRESS)
 
-
-# Directories and run/subject handling
-
+#  Directories and run/subject handling
 BASE_DIR = "stimulation_code"
 RUNS_DIR = os.path.join(BASE_DIR, "runs")
 os.makedirs(RUNS_DIR, exist_ok=True)
@@ -88,15 +91,14 @@ PARTICIPANT_ID, RUN_NUMBER = get_next_subject_and_run(RUNS_DIR)
 SESSION = 1  # fixed for now
 
 
-# Experiment parameters (ONE RUN per execution)
-
+#  Experiment parameters (ONE RUN per execution)
 TRIALS_PER_RUN = 500      # number of trials in this run
 MIN_RUN = 3               # minimum same-side run length
-MAX_RUN = 7               # maximum same-side run length
+MAX_RUN = 7               # maximum same-side run length (max beat within run)
 ISI_FIXED = 0.700         # ISI in seconds (700 ms)
 
 
-# Helper functions
+#  Helper functions
 def generate_isis_fixed(n_trials: int, isi_s: float):
     """
     Generate a list of constant ISIs (no jitter).
@@ -117,38 +119,53 @@ def generate_sides_for_run(trials_per_run: int, min_run: int, max_run: int):
             if len(sides) >= trials_per_run:
                 break
             sides.append(current_side)
+        # Switch side for the next run
         current_side = "left" if current_side == "right" else "right"
     return sides
 
 
 def encode_trigger(beat: int, side: str, kind: str) -> int:
     """
-    Encode trigger as a 5-bit integer:
+    Encode trigger as a 6-bit integer: [R][L][D][c2][c1][c0]
 
-    bit 0:    side      (0 = right, 1 = left)
-    bits 1–3: beat-1    (0–7 → beats 1–8)
-    bit 4:    kind      (0 = standard, 1 = deviant)
+      bit 5 (R): 1 if RIGHT side, 0 otherwise
+      bit 4 (L): 1 if LEFT  side, 0 otherwise
+                 (R and L are never 1 at the same time)
+
+      bit 3 (D): 1 if DEVIANT, 0 if STANDARD
+
+      bits 2–0 (c2,c1,c0): beat counter within same-side run (1–7)
+
+    Examples:
+      side='right', kind='standard', beat=3
+         → R=1,L=0,D=0,count=3 (011) → 100011 (bin) = 35 (dec)
+
+      side='left',  kind='deviant', beat=5
+         → R=0,L=1,D=1,count=5 (101) → 011101 (bin) = 29 (dec)
     """
-    if not (1 <= beat <= 8):
-        raise ValueError("beat should be between 1 and 8")
+    if not (1 <= beat <= 7):
+        raise ValueError("beat should be between 1 and 7 to fit in 3 bits")
 
+    # Side bits
     if side == "right":
-        side_bit = 0
+        side_bits = 0b100000   # R=1, L=0
     elif side == "left":
-        side_bit = 1
+        side_bits = 0b010000   # R=0, L=1
     else:
         raise ValueError("side should be 'right' or 'left'")
 
+    # Kind bit
     if kind == "standard":
-        kind_bit = 0
+        kind_bit = 0b000000    # D=0
     elif kind == "deviant":
-        kind_bit = 1
+        kind_bit = 0b001000    # D=1
     else:
         raise ValueError("kind should be 'standard' or 'deviant'")
 
-    kind_bit = kind_bit << 4          # move to bit 4
-    beat_bits = (beat - 1) << 1       # bits 1–3
-    trigger = kind_bit | beat_bits | side_bit
+    # Counter bits (3 bits) – here we use beat directly (1–7)
+    counter_bits = (beat & 0b111)
+
+    trigger = side_bits | kind_bit | counter_bits
     return trigger
 
 def process_run(sides):
@@ -156,7 +173,7 @@ def process_run(sides):
     From a sequence of sides (left/right), compute for each trial:
       - beat: position within the same-side run (1, 2, 3, ...)
       - kind: 'standard' or 'deviant'
-      - trigger: encoded 5-bit trigger code
+      - trigger: encoded 6-bit trigger code [R][L][D][c2][c1][c0]
     """
     beats = []
     kinds = []
@@ -171,6 +188,11 @@ def process_run(sides):
             current_beat = 1
         else:
             current_beat += 1
+
+        # Seguridad: asumimos MAX_RUN <= 7
+        if current_beat > 7:
+            raise ValueError("Current beat exceeded 7; increase coding bits or reduce MAX_RUN")
+
         beats.append(current_beat)
 
         # Standard vs deviant
@@ -188,8 +210,25 @@ def process_run(sides):
 
     return beats, kinds, triggers
 
+#  Trigger sending
+PULSE_DURATION_S = 0.005  # duration of the pulse on the port (seconds)
 
-# Build SINGLE RUN structure
+def send_trigger(trigger_code: int) -> None:
+    """
+    Sends the 6-bit trigger code directly to the parallel port.
+
+    Bits (from MSB to LSB): [R][L][D][c2][c1][c0]
+
+      R (bit 5) = 1 if RIGHT, 0 otherwise
+      L (bit 4) = 1 if LEFT,  0 otherwise
+      D (bit 3) = 1 if DEVIANT, 0 if STANDARD
+      c2..c0    = beat counter within run (1–7)
+    """
+    port_eeg.setData(trigger_code)
+    core.wait(PULSE_DURATION_S)
+    port_eeg.setData(0)
+
+#  Build SINGLE RUN structure
 all_trials = []
 
 sides = generate_sides_for_run(TRIALS_PER_RUN, MIN_RUN, MAX_RUN)
@@ -209,7 +248,7 @@ for trial_index in range(TRIALS_PER_RUN):
         "beat": beats[trial_index],
         "kind": kinds[trial_index],
         "trigger": triggers[trial_index],
-        "trigger_bin": "'" + format(triggers[trial_index], "05b"),
+        "trigger_bin": "'" + format(triggers[trial_index], "06b"),
         "ISI_ms": isi_ms,
         "onset_ms": None,
     }
@@ -223,8 +262,7 @@ for trial in all_trials:
     t += isi_s
     scheduled_onsets_s.append(t)
 
-
-# Presentation loop with absolute timing
+#  Presentation loop with absolute timing
 print("PARALLEL PORT MODE: somatosensory oddball (left/right).")
 print(f"Subject (participant_id): {PARTICIPANT_ID}")
 print(f"Run number: {RUN_NUMBER:02d}")
@@ -256,7 +294,7 @@ for i, trial in enumerate(all_trials):
     trial["onset_ms"] = onset_ms
 
     trigger_code = trial["trigger"]
-    send_trigger(trigger_code)  # decides which stimulator based on bit 0
+    send_trigger(trigger_code)
 
     print(
         f"Trial {i+1:4d}/{TRIALS_PER_RUN} | "
@@ -271,17 +309,11 @@ for i, trial in enumerate(all_trials):
 
 print(f"\nRun {RUN_NUMBER:02d} for subject {PARTICIPANT_ID} finished.")
 
-
-# Save CSV for THIS RUN
+#  Save CSV for THIS RUN
 df = pd.DataFrame(all_trials)
 filename = get_run_filename(PARTICIPANT_ID, RUN_NUMBER)
 filepath = os.path.join(RUNS_DIR, filename)
 df.to_csv(filepath, index=False)
-
-print("CSV saved as:", filepath)
-print("Parallel-port stimulation run finished.")
-
-
 
 print(f"CSV saved as: {filepath}")
 print(f"✓ Run {RUN_NUMBER:02d} for subject {PARTICIPANT_ID} FINISHED COMPLETELY.")
