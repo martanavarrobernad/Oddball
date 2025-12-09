@@ -1,8 +1,6 @@
 # Somatosensory oddball (left/right) – PARALLEL PORT VERSION
-# - One run per execution
-# - Parallel port triggers:
-#       * Full trigger code to EEG
-#       * Separate pulses to RIGHT and LEFT stimulators based on side bit
+# One run per execution
+# Parallel port triggers
 
 import random
 import os
@@ -10,39 +8,18 @@ import pandas as pd
 from psychopy import core
 from psychopy import parallel
 
-# =======================================
-# PARALLEL PORT ADDRESSES
-# =======================================
-# TODO: replace these with the REAL addresses of your ports
+# PARALLEL PORT ADDRESS
 EEG_PORT_ADDRESS   = 0x0378
 
 # Create parallel port objects
 port_eeg   = parallel.ParallelPort(address=EEG_PORT_ADDRESS)
 
-# =======================================
-# Trigger sending
-# =======================================
-def send_trigger(trigger_code: int) -> None:
-    """
-    Sends:
-      1) Full trigger code to EEG (on EEG_PORT_ADDRESS)
-      2) A stimulation pulse to RIGHT or LEFT stimulator based ONLY on trigger bit 0:
 
-         bit 0 (LSB) = side
-             0 → RIGHT stimulator
-             1 → LEFT stimulator
-    """
-
-    # Decode side from bit 0
-    side_bit = trigger_code & 0b1   # 0 = right, 1 = left
-
-# =======================================
 # Directories and run/subject handling
-# =======================================
+
 BASE_DIR = "stimulation_code"
 RUNS_DIR = os.path.join(BASE_DIR, "runs")
 os.makedirs(RUNS_DIR, exist_ok=True)
-
 
 def get_next_subject_and_run(runs_dir: str):
     """
@@ -111,9 +88,7 @@ PARTICIPANT_ID, RUN_NUMBER = get_next_subject_and_run(RUNS_DIR)
 SESSION = 1  # fixed for now
 
 
-# =======================================
 # Experiment parameters (ONE RUN per execution)
-# =======================================
 
 TRIALS_PER_RUN = 500      # number of trials in this run
 MIN_RUN = 3               # minimum same-side run length
@@ -121,9 +96,7 @@ MAX_RUN = 7               # maximum same-side run length
 ISI_FIXED = 0.700         # ISI in seconds (700 ms)
 
 
-# =======================================
 # Helper functions
-# =======================================
 def generate_isis_fixed(n_trials: int, isi_s: float):
     """
     Generate a list of constant ISIs (no jitter).
@@ -178,7 +151,6 @@ def encode_trigger(beat: int, side: str, kind: str) -> int:
     trigger = kind_bit | beat_bits | side_bit
     return trigger
 
-
 def process_run(sides):
     """
     From a sequence of sides (left/right), compute for each trial:
@@ -217,9 +189,7 @@ def process_run(sides):
     return beats, kinds, triggers
 
 
-# =======================================
 # Build SINGLE RUN structure
-# =======================================
 all_trials = []
 
 sides = generate_sides_for_run(TRIALS_PER_RUN, MIN_RUN, MAX_RUN)
@@ -254,9 +224,7 @@ for trial in all_trials:
     scheduled_onsets_s.append(t)
 
 
-# =======================================
 # Presentation loop with absolute timing
-# =======================================
 print("PARALLEL PORT MODE: somatosensory oddball (left/right).")
 print(f"Subject (participant_id): {PARTICIPANT_ID}")
 print(f"Run number: {RUN_NUMBER:02d}")
@@ -304,9 +272,7 @@ for i, trial in enumerate(all_trials):
 print(f"\nRun {RUN_NUMBER:02d} for subject {PARTICIPANT_ID} finished.")
 
 
-# =======================================
 # Save CSV for THIS RUN
-# =======================================
 df = pd.DataFrame(all_trials)
 filename = get_run_filename(PARTICIPANT_ID, RUN_NUMBER)
 filepath = os.path.join(RUNS_DIR, filename)
